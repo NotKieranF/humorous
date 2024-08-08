@@ -1,0 +1,50 @@
+.ifndef	NES_INC
+NES_INC = 1
+
+.scope	PPU
+	; Registers
+	CTRL		:= $2000
+	MASK		:= $2001
+	STATUS		:= $2002
+	OAMADDR		:= $2003
+	OAMDATA		:= $2004
+	SCROLL		:= $2005
+	ADDR		:= $2006
+	DATA		:= $2007
+	OAMDMA		:= $4014
+
+	; PPU::CTRL flags
+	.scope	CTRL
+		DISABLE_NMI			= %00000000
+		ENABLE_NMI			= %10000000
+		SMALL_SPRITES		= %00000000
+		LARGE_SPRITES		= %00100000
+		BG_PATTERN_L		= %00000000
+		BG_PATTERN_R		= %00010000
+		SP_PATTERN_L		= %00000000
+		SP_PATTERN_R		= %00001000
+		INC_1				= %00000000
+		INC_32				= %00000100
+	.endscope
+
+	; PPU::MASK flags
+	.scope	MASK
+		B_EMPHASIS			= %10000000
+		G_EMPHASIS			= %01000000
+		R_EMPHASIS			= %00100000
+		RENDER_SP			= %00010100
+		RENDER_BG			= %00001010
+		CLIP_SP				= %00010000
+		CLIP_BG				= %00001000
+		GRAYSCALE			= %00000001
+	.endscope
+
+	; PPU::STATUS flags
+	.scope	STATUS
+		VBLANK				= %10000000
+		SPRITE_0			= %01000000
+		SPRITE_V			= %00100000
+	.endscope
+.endscope
+
+.endif
