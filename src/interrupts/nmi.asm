@@ -2,21 +2,39 @@
 .include	"nmi.inc"
 .include	"irq.inc"
 .include	"nes.inc"
+GFX_UPDATE_BUFFER_PADDING	= 6	; Padding to ensure no stack-smashing occurs if a popslide gets interrupted
+
+
 
 
 
 .zeropage
-soft_ppuctrl:		.RES 1
-soft_ppumask:		.RES 1
-soft_scroll_x:		.RES 1
-soft_scroll_y:		.RES 1
-frame_done_flag:	.RES 1
-oam_index:			.RES 1
+soft_ppuctrl:				.res 1
+soft_ppumask:				.res 1
+soft_scroll_x:				.res 1
+soft_scroll_y:				.res 1
+frame_done_flag:			.res 1
+oam_index:					.res 1
+gfx_update_buffer_index:	.res 1
+stack_ptr:					.res 1	; Used to temporarily save to stack pointer when performing a popslide
+popslide_addr:				.res 2	; Address to jump to when performing an unrolled popslide
+
+
 
 
 
 .segment	"OAM"
-oam:				.RES 256
+oam:						.res 256
+
+
+
+
+
+.segment	"STACK"
+gfx_update_buffer_padding:	.res GFX_UPDATE_BUFFER_PADDING
+gfx_update_buffer:			.res 192
+
+
 
 
 
@@ -32,12 +50,10 @@ check_frame_done_flag:
 	LDA frame_done_flag
 	BEQ no_gfx_update
 
-; Clear write latch
-	BIT PPU::STATUS
+empty_buffer:
+	JSR empty_gfx_update_buffer
 
 update_registers:
-	LDA #>oam
-	STA PPU::OAMDMA
 	LDA soft_ppuctrl
 	STA PPU::CTRL
 	LDA soft_ppumask
@@ -46,6 +62,10 @@ update_registers:
 	STA PPU::SCROLL
 	LDA soft_scroll_y
 	STA PPU::SCROLL
+	LDA #$00
+	STA PPU::OAMADDR
+	LDA #>oam
+	STA PPU::OAMDMA
 
 clear_frame_done_flag:
 	LDA #$00
@@ -66,10 +86,72 @@ restore_registers:
 .endproc
 
 ; Indicate that a logical frame is done, and wait for the next nmi before returning
-; Trashes A
+;	Takes: Nothing
+;	Returns: Nothing
+;	Clobbers: A
 .proc	wait_for_nmi
 	INC frame_done_flag
 :	LDA frame_done_flag
 	BNE :-
 	RTS
+.endproc
+
+; Consumes the contents of the gfx_update_buffer. May be called outside of NMI, but care should be taken to ensure that rendering is disabled, and the frame_done_flag is clear
+;	Takes: Nothing
+;	Returns: Nothing
+;	Clobbers: A, X
+.proc	empty_gfx_update_buffer
+	BIT PPU::STATUS					; Clear write latch
+
+add_terminator:
+	LDA #$FF
+	LDX gfx_update_buffer_index
+	STA gfx_update_buffer
+
+init_popslide:
+	TSX								; Save current stack pointer
+	STX stack_ptr
+	LDX #<(gfx_update_buffer - 1)	; Setup new stack pointer at head of update buffer
+	TXS
+	LDA #>popslide					; Initialize hi byte of Duff's device pointer
+	STA popslide_addr + 1
+
+popslide_loop:
+	PLA								; Read hi byte of destination address
+	BMI exit						; PPU address space is only 16KiB, so any negative value is the buffer terminator
+	STA PPU::ADDR
+	PLA								; Read lo byte of destination address
+	STA PPU::ADDR
+
+@read_length:
+	PLA								; Read packet length byte
+	ASL								; Shift direction bit into carry
+	EOR #%11111100					; Invert length value for lo byte of Duff's device address, with a minimum of 1 iteration
+	STA popslide_addr + 0
+
+@check_direction:
+	LDA #PPU::CTRL::INC_1
+	BCC :+
+	LDA #PPU::CTRL::INC_32
+:	STA PPU::CTRL
+
+@execute_duff:
+	JMP (popslide_addr)
+
+exit:
+	LDX stack_ptr					; Restore stack pointer and reset graphics buffer index
+	TXS
+	LDX #$00
+	STX gfx_update_buffer_index
+
+	RTS
+
+; Aligned to the nearest page to ensure the Duff's device address calculation never overflows into the hi byte 
+.align	256
+popslide:
+.repeat	64
+	PLA
+	STA PPU::DATA
+.endrep
+	JMP popslide_loop
 .endproc
