@@ -75,7 +75,7 @@ semaphore_ptr:					.res 2	; Interrupts should set the high byte of this pointer 
 ;	Takes: Mirroring type to switch to in A
 ;	Returns: Nothing
 ;	Clobbers: A, Y
-.PROC	switch_mirroring_interruptor
+.proc	switch_mirroring_interruptor
 	STA current_mirroring
 	ORA current_prg_bank
 
@@ -86,7 +86,7 @@ semaphore_ptr:					.res 2	; Interrupts should set the high byte of this pointer 
 	STA semaphore_ptr + 1
 
 	RTS
-.ENDPROC
+.endproc
 
 ; One time mapper initializaton
 ;	Takes: Nothing

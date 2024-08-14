@@ -106,7 +106,7 @@ restore_registers:
 add_terminator:
 	LDA #$FF
 	LDX gfx_update_buffer_index
-	STA gfx_update_buffer
+	STA gfx_update_buffer, X
 
 init_popslide:
 	TSX								; Save current stack pointer

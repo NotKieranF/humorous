@@ -3,10 +3,10 @@
 
 
 .zeropage
-buttons_up:				.RES 4	; Buttons released on this frame
-buttons_down:			.RES 4	; Buttons pressed on this frame
-buttons_held:			.RES 4	; Buttons currently pressed
-buttons_held_new:		.RES 4	; Buffer that controller state is read into
+buttons_up:				.res 4	; Buttons released on this frame
+buttons_down:			.res 4	; Buttons pressed on this frame
+buttons_held:			.res 4	; Buttons currently pressed
+buttons_held_new:		.res 4	; Buffer that controller state is read into
 
 
 

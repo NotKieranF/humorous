@@ -63,6 +63,10 @@ vblank_wait_2:
 	BIT PPU::STATUS					; Second wait for vblank, PPU is ready after this
 	BPL vblank_wait_2
 
+vblank_wait_3:
+	BIT PPU::STATUS					; This is needed in mesen for whatever reason. It really shouldn't be
+	BPL vblank_wait_3
+
 	CLI								; Accept IRQs
 	JMP post_reset
 

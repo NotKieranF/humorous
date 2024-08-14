@@ -6,6 +6,7 @@ MAX_OBJECTS		= 8
 
 ; Object parameters
 .global		object_id
+.global		object_flags
 .global		object_state
 .global		object_x_lo, object_x_hi	; Unsigned 12.4 bit fixed point
 .global		object_y_lo, object_y_hi
@@ -29,5 +30,20 @@ MAX_OBJECTS		= 8
 ;
 ;
 .global		render_objects
+
+;
+.enum	OBJECTS
+	START
+	DEBUG
+	END
+.endenum
+
+.scope	OBJECT
+	.scope	FLAGS
+		FLIP_V		= %10000000
+		FLIP_H		= %01000000
+		PRIORITY	= %00100000
+	.endscope
+.endscope
 
 .endif
