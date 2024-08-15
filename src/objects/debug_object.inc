@@ -1,4 +1,6 @@
 .include	"controllers.inc"
+.include	"math.inc"
+.include	"perlin.inc"
 
 
 .proc	debug_object_state_table
@@ -12,6 +14,38 @@
 
 
 .proc	debug_object_init_state
+	LDA #$00
+	STA object_x_hi, X
+	LDY object_x_speed, X
+	LDA #$90
+	LDX #$30
+	JSR signed_interpolate
+	LDX current_object
+	CLC
+	ADC #$80
+	STA object_x_lo, X
+
+	ASL object_x_lo, X
+	ROL object_x_hi, X
+	ASL object_x_lo, X
+	ROL object_x_hi, X
+	ASL object_x_lo, X
+	ROL object_x_hi, X
+	ASL object_x_lo, X
+	ROL object_x_hi, X
+
+	LDA buttons_held
+	AND #CONTROLLERS::BUTTON_LEFT
+	BEQ :+
+		DEC object_x_speed, X
+:	LDA buttons_held
+	AND #CONTROLLERS::BUTTON_RIGHT
+	BEQ :+
+		INC object_x_speed, X
+:
+
+	RTS
+
 	SPEED	= $10
 
 	LDA buttons_held

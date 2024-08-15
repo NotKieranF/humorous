@@ -1,4 +1,5 @@
 .include	"mapper.inc"
+.include	"math.inc"
 .constructor	init_mapper
 
 
@@ -117,7 +118,3 @@ semaphore_ptr:					.res 2	; Interrupts should set the high byte of this pointer 
 
 
 .rodata
-identity_table:
-.repeat	256, i
-	.byte	i
-.endrep

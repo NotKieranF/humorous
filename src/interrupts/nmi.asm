@@ -143,6 +143,8 @@ exit:
 	TXS
 	LDX #$00
 	STX gfx_update_buffer_index
+	LDA soft_ppuctrl				; Return PPU::CTRL to its proper state
+	STA PPU::CTRL
 
 	RTS
 
