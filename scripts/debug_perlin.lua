@@ -17,7 +17,7 @@ function plot()
 	emu.log(min .. " " .. max)
 	
 	
-	emu.drawPixel(x / step_size, y / step_size, color * 2 + 128, 0)
+	emu.drawPixel(x / step_size, y / step_size, color + 128, 0)
 end
 
 emu.addMemoryCallback(plot, emu.callbackType.write, 0x4444)

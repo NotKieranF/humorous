@@ -47,23 +47,27 @@ setup_palette:
 	JSR wait_for_nmi
 
 .proc temp
+	temp_x			:= $10	; And $11, $12
+	temp_y			:= $13	; And $14, $15
+	value			:= $16
+	octaves			:= $17
 	x_count			:= $0F
 	y_count			:= $0E
 	tile_x_count	:= $0D
 	tile_y_count	:= $0C
-	STEP_SIZE		= $10
+	STEP_SIZE		= $04
 
 	LDA #$00
-	STA perlin_x + 0
-	STA perlin_x + 1
-	STA perlin_x + 2
+	STA temp_x + 0
+	STA temp_x + 1
+	STA temp_x + 2
 	STA tile_x_count
 
 outer_loop:
 	LDA #$00
-	STA perlin_y + 0
-	STA perlin_y + 1
-	STA perlin_y + 2
+	STA temp_y + 0
+	STA temp_y + 1
+	STA temp_y + 2
 	STA tile_y_count
 inner_loop:
 	LDX gfx_update_buffer_index
@@ -88,10 +92,45 @@ inner_loop:
 	LDA #$08
 	STA x_count
 	@inner:
-		JSR perlin
+		LDA temp_x + 0
+		STA perlin_x + 0
+		LDA temp_x + 1
+		STA perlin_x + 1
+		LDA temp_x + 2
+		STA perlin_x + 2
+		LDA temp_y + 0
+		STA perlin_y + 0
+		LDA temp_y + 1
+		STA perlin_y + 1
+		LDA temp_y + 2
+		STA perlin_y + 2
+
+		LDA #$00
+		STA value
+		LDA #$03
+		STA octaves
+
+		@octave_loop:
+			JSR perlin
+			CLC
+			ADC value
+			STA value
+			CMP #$80
+			ROR value
+
+			ASL perlin_x + 0
+			ROL perlin_x + 1
+			ROL perlin_x + 2
+			ASL perlin_y + 0
+			ROL perlin_y + 1
+			ROL perlin_y + 2
+
+			DEC octaves
+			BNE @octave_loop
+
+
 		LDX gfx_update_buffer_index
-		ASL
-		ASL
+;		ASL
 		CLC
 		ADC #$80
 		ASL
@@ -102,14 +141,14 @@ inner_loop:
 	@inc_x:
 		LDA #<STEP_SIZE
 		CLC
-		ADC perlin_x + 0
-		STA perlin_x + 0
+		ADC temp_x + 0
+		STA temp_x + 0
 		LDA #>STEP_SIZE
-		ADC perlin_x + 1
-		STA perlin_x + 1
+		ADC temp_x + 1
+		STA temp_x + 1
 		LDA #^STEP_SIZE
-		ADC perlin_x + 2
-		STA perlin_x + 2
+		ADC temp_x + 2
+		STA temp_x + 2
 
 	@check_inner:
 		DEC x_count
@@ -119,31 +158,32 @@ inner_loop:
 @inc_y:
 	LDA #<STEP_SIZE
 	CLC
-	ADC perlin_y + 0
-	STA perlin_y + 0
+	ADC temp_y + 0
+	STA temp_y + 0
 	LDA #>STEP_SIZE
-	ADC perlin_y + 1
-	STA perlin_y + 1
+	ADC temp_y + 1
+	STA temp_y + 1
 	LDA #^STEP_SIZE
-	ADC perlin_y + 2
-	STA perlin_y + 2
+	ADC temp_y + 2
+	STA temp_y + 2
 
 @reset_x:
-	LDA perlin_x + 0
+	LDA temp_x + 0
 	SEC
-	SBC #<STEP_SIZE * 8
-	STA perlin_x + 0
-	LDA perlin_x + 1
-	SBC #>STEP_SIZE * 8
-	STA perlin_x + 1
-	LDA perlin_x + 2
-	SBC #^STEP_SIZE * 8
-	STA perlin_x + 2
+	SBC #<(STEP_SIZE * 8)
+	STA temp_x + 0
+	LDA temp_x + 1
+	SBC #>(STEP_SIZE * 8)
+	STA temp_x + 1
+	LDA temp_x + 2
+	SBC #^(STEP_SIZE * 8)
+	STA temp_x + 2
 
 @check_outer:
 	DEC y_count
-	BNE @outer
-	LAX gfx_update_buffer_index
+	BEQ :+ 
+		JMP @outer
+:	LAX gfx_update_buffer_index
 	AXS #<-$08
 	STX gfx_update_buffer_index
 
@@ -158,16 +198,16 @@ check_inner:
 :
 
 @tile_inc_x:
-	LDA perlin_x + 0
+	LDA temp_x + 0
 	CLC
-	ADC #<STEP_SIZE * 8
-	STA perlin_x + 0
-	LDA perlin_x + 1
-	ADC #>STEP_SIZE * 8
-	STA perlin_x + 1
-	LDA perlin_x + 2
-	ADC #^STEP_SIZE * 8
-	STA perlin_x + 2
+	ADC #<(STEP_SIZE * 8)
+	STA temp_x + 0
+	LDA temp_x + 1
+	ADC #>(STEP_SIZE * 8)
+	STA temp_x + 1
+	LDA temp_x + 2
+	ADC #^(STEP_SIZE * 8)
+	STA temp_x + 2
 
 check_outer:
 	INC tile_x_count

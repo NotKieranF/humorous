@@ -14,10 +14,10 @@ perlin_y:		.res 3
 
 
 .code
-;
-;	Takes:
-;	Returns:
-;	Clobbers:
+; Sample a perlin noise field at the provided input coordinates
+;	Takes: Unsigned 16.8-bit input coordinates in perlin_x and perlin_y
+;	Returns: Signed 8-bit output in A
+;	Clobbers: A, X, Y, $00 - $06
 .proc	perlin
 	corners		:= $02	; And $03, $04, $05
 	angle		:= $06
@@ -25,7 +25,7 @@ perlin_y:		.res 3
 	LDX #$03
 loop:
 @permute:
-	LDA perlin_x + 1
+	LDA perlin_x + 1				; This is just an arbitrary way of combining the integer parts of the input coordinates together to produce a pseudo-random number
 	CLC
 	ADC grid_adjust_x, X
 	TAY
@@ -41,6 +41,7 @@ loop:
 	ADC permutation, Y				; Carry from grid_adjust_y lobyte addition
 
 @dot_product:
+	; corners[x] = frac(perlin_x) * cos(angle) * (x % 2 == 0 ? 1 : -1)
 	STA angle
 	CLC
 	ADC #$40
@@ -49,20 +50,32 @@ loop:
 	TAY
 
 	LDA perlin_x + 0
-	LSR
-	ORA grid_invert_x, X
+	EOR grid_invert_x, X
 	SET_FAST_MUL_HI
-	SIGNED_FAST_MUL_HI
+	FAST_MUL_HI
+	CPY #$00							; Perform sign correction for multiplier in Y (cosine of angle)
+	BPL :+
+		SBC fast_mul_sq1_hi_ptr + 0
+:	EOR grid_invert_x, X				; Negate X component of dot product when considering gridpoints on the right
+	SEC
+	SBC grid_invert_x, X
 	STA corners, X
 
+	; corners[x] += frac(perlin_y) * sin(angle) * (x < 2 ? 1 : -1)
 	LDY angle
 	LDA trig_table, Y
 	TAY
+
 	LDA perlin_y + 0
-	LSR
-	ORA grid_invert_y, X
+	EOR grid_invert_y, X
 	SET_FAST_MUL_HI
-	SIGNED_FAST_MUL_HI
+	FAST_MUL_HI
+	CPY #$00							; Perform sign correction for multiplier in Y (sine of angle)
+	BPL :+
+		SBC fast_mul_sq1_hi_ptr + 0
+:	EOR grid_invert_y, X				; Negate Y component of dot product when considering gridpoints on the bottom
+	SEC
+	SBC grid_invert_y, X
 	CLC
 	ADC corners, X
 	STA corners, X
@@ -71,13 +84,15 @@ loop:
 	BPL loop
 
 interpolater:
-	LDX perlin_x + 0				; Use position within gridcell as an interpolation weight
-	LDY smoothstep, X				; Pass our interpolation weight through a smoothing table
+	; corners[0] = lerp(corners[0], corners[1], frac(perlin_x))
+	LDX perlin_x + 0					; Use position within gridcell as an interpolation weight
+	LDY smoothstep, X					; Pass our interpolation weight through a smoothing table
 	LDX corners + 0
 	LDA corners + 1
 	JSR signed_interpolate
 	STA corners + 0
 
+	; corners[2] = lerp(corners[2], corners[3], frac(perlin_x))
 	LDX perlin_x + 0
 	LDY smoothstep, X
 	LDX corners + 2
@@ -85,6 +100,7 @@ interpolater:
 	JSR signed_interpolate
 	STA corners + 2
 
+	; return lerp(corners[0], corners[2], frac(perlin_y))
 	LDX perlin_y + 0
 	LDY smoothstep, X
 	LDX corners + 0
@@ -99,9 +115,9 @@ grid_adjust_x:
 grid_adjust_y:
 .byte	$00, $00, $01, $01
 grid_invert_x:
-.byte	$00, $80, $00, $80
+.byte	$00, $FF, $00, $FF
 grid_invert_y:
-.byte	$00, $00, $80, $80
+.byte	$00, $00, $FF, $FF
 
 .endproc
 
