@@ -32,11 +32,6 @@ MAX_OBJECTS		= 8
 .global		render_objects
 
 ;
-.enum	OBJECTS
-	START
-	DEBUG
-	END
-.endenum
 
 .scope	OBJECT
 	.scope	FLAGS
@@ -45,5 +40,17 @@ MAX_OBJECTS		= 8
 		PRIORITY	= %00100000
 	.endscope
 .endscope
+
+; Animation opcodes
+.enum	ANIM_OPCODE
+	LOOP		= $80
+	HANG
+	JUMP
+	SET_STATE
+	SET_X_SPEED
+	SET_Y_SPEED
+	ADD_X_SPEED
+	ADD_Y_SPEED
+.endenum
 
 .endif

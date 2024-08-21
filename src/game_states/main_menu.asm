@@ -4,6 +4,7 @@
 .include	"objects.inc"
 .include	"controllers.inc"
 .include	"perlin.inc"
+.include	"graphics.inc"
 .export	initial_game_state := main_menu_init
 
 .proc	main_menu_init
@@ -45,6 +46,7 @@ setup_palette:
 	LDA #$00
 	STA soft_ppumask
 	JSR wait_for_nmi
+	JMP no_temp
 
 .proc temp
 	temp_x			:= $10	; And $11, $12
@@ -55,7 +57,7 @@ setup_palette:
 	y_count			:= $0E
 	tile_x_count	:= $0D
 	tile_y_count	:= $0C
-	STEP_SIZE		= $04
+	STEP_SIZE		= $10
 
 	LDA #$00
 	STA temp_x + 0
@@ -107,7 +109,7 @@ inner_loop:
 
 		LDA #$00
 		STA value
-		LDA #$03
+		LDA #$01
 		STA octaves
 
 		@octave_loop:
@@ -130,7 +132,7 @@ inner_loop:
 
 
 		LDX gfx_update_buffer_index
-;		ASL
+		ASL
 		CLC
 		ADC #$80
 		ASL
@@ -255,43 +257,16 @@ fill_nametable:
 
 .endproc
 
+no_temp:
+	LDA #<test_gfx
+	STA $00
+	LDA #>test_gfx
+	STA $01
+	JSR load_chr_block
+
 	LDA #PPU::MASK::RENDER_BG | PPU::MASK::RENDER_SP
 	STA soft_ppumask
 
-;	STEP_SIZE = $08
-;
-;	LDA #$00
-;	STA $FF
-;	STA $FE
-;	STA perlin_y + 0
-;	STA perlin_y + 1
-;	STA perlin_y + 2
-;@outer:
-;	LDA #$00
-;	STA perlin_x + 0
-;	STA perlin_x + 1
-;	STA perlin_x + 2
-;@inner:
-;	JSR perlin
-;
-;	LDA #STEP_SIZE
-;	CLC
-;	ADC perlin_x + 0
-;	STA perlin_x + 0
-;	BCC :+
-;		INC perlin_x + 1
-;:	INC $FF
-;	BNE @inner
-;
-;	LDA #STEP_SIZE
-;	CLC
-;	ADC perlin_y + 0
-;	STA perlin_y + 0
-;	BCC :+
-;		INC perlin_y + 1
-;:	INC $FE
-;	BNE @outer
-;
 	LDA #$01
 	LDX #$08
 	LDY #$08
@@ -322,7 +297,7 @@ test_palette:
 .byte	$0F, $00, $10, $20
 .byte	$0F, $00, $10, $20
 .byte	$0F, $00, $10, $20
-.byte	$0F, $2D, $00, $10
+.byte	$0F, $03, $13, $23
 .byte	$0F, $05, $15, $25
 .byte	$0F, $07, $17, $27
 .byte	$0F, $09, $19, $29

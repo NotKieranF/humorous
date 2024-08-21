@@ -96,6 +96,22 @@ restore_registers:
 	RTS
 .endproc
 
+; Clear oam buffer by placing all sprites offscreen
+;	Takes: Nothing
+;	Returns: Nothing
+;	Clobbers: A, X
+.proc	clear_oam
+	LDX #$00
+	LDA #$FF
+:	STA oam + 0, X				; 4x unrolled to save time
+	STA oam + 4, X
+	STA oam + 8, X
+	STA oam + 12, X
+	AXS #<-($04 * 4)			; X = (X & A) + 4 * 4 -> X = x + 4 * 4 as A = $FF
+	BNE :-
+	RTS
+.endproc
+
 ; Consumes the contents of the gfx_update_buffer. May be called outside of NMI, but care should be taken to ensure that rendering is disabled, and the frame_done_flag is clear
 ;	Takes: Nothing
 ;	Returns: Nothing

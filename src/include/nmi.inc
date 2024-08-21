@@ -10,6 +10,12 @@ NMI_INC = 1
 ;	Clobbers: A
 .global		wait_for_nmi
 
+; Clear oam buffer by placing all sprites offscreen
+;	Takes: Nothing
+;	Returns: Nothing
+;	Clobbers: A, X
+.global		clear_oam
+
 ; Consumes the contents of the gfx_update_buffer. May be called outside of NMI, but care should be taken to ensure that rendering is disabled, and the frame_done_flag is clear
 ;	Takes: Nothing
 ;	Returns: Nothing

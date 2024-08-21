@@ -22,7 +22,7 @@ game_state_bank:			.res 1
 .code
 .proc	main
 	; Setup NMIs
-	LDA #PPU::CTRL::ENABLE_NMI
+	LDA #PPU::CTRL::ENABLE_NMI | PPU::CTRL::SP_PATTERN_R
 	STA soft_ppuctrl
 	STA PPU::CTRL
 
