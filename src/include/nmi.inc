@@ -26,11 +26,14 @@ NMI_INC = 1
 ;	dest: VRAM address to write to PPU::ADDR, big endian
 ;	length: of the form %dllllll0
 ;	                     |||||||
-;	                     |++++++-- length of packet
+;	                     |++++++-- length of packet - 1
 ;	                     +-------- direction, 0 for horizontal (inc-by-1), 1 for vertical (inc-by-32)
 ;	data: data to write to PPU::DATA
 .global		gfx_update_buffer
 .globalzp	gfx_update_buffer_index
+
+; Helper macro for combining gfx packet lengths and directions into one value
+.define		GFX_PACKET_LENGTH(length, direction) ((length - 1) << 1 | direction << 7)
 
 ; Soft registers
 .globalzp	soft_ppuctrl, soft_ppumask, soft_scroll_x, soft_scroll_y
@@ -38,5 +41,8 @@ NMI_INC = 1
 ; OAM buffer stuff
 .global		oam
 .globalzp	oam_index
+
+; CPU accessible copy of attribute table
+.global		attribute_buffer
 
 .endif

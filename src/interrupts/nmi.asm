@@ -38,6 +38,13 @@ gfx_update_buffer:			.res 192
 
 
 
+.bss
+attribute_buffer:			.res 64	; CPU accessible copy of attribute table
+
+
+
+
+
 .code
 .proc	nmi
 	PHA
@@ -109,6 +116,7 @@ restore_registers:
 	STA oam + 12, X
 	AXS #<-($04 * 4)			; X = (X & A) + 4 * 4 -> X = x + 4 * 4 as A = $FF
 	BNE :-
+	STX oam_index
 	RTS
 .endproc
 
