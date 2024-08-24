@@ -363,11 +363,11 @@ check_oam:
 		SEC							; Indicate that oam is full by setting the carry flag
 		RTS
 
-y_out_of_bounds:
-	INY								; Skip to next sprite in input stream
-	INY
-	INY
 x_out_of_bounds:
+	INY								; Skip to next sprite in input stream
+y_out_of_bounds:
+	INY
+	INY
 	LDA #$FF						; Put Y position of written sprite offscreen
 	STA oam + 0, X
 
