@@ -1,55 +1,48 @@
 .include	"controllers.inc"
+; Controller port MMIO registers
+CONTROLLER_PORT_1		= $4016
+CONTROLLER_PORT_2		= $4017
+
+
 
 
 
 .zeropage
-buttons_up:				.res 4	; Buttons released on this frame
-buttons_down:			.res 4	; Buttons pressed on this frame
-buttons_held:			.res 4	; Buttons currently pressed
-buttons_held_new:		.res 4	; Buffer that controller state is read into
+buttons_up:				.res 2	; Buttons released on this frame
+buttons_down:			.res 2	; Buttons pressed on this frame
+buttons_held:			.res 2	; Buttons currently pressed
 
 
-
-; Constants
-CONTROLLER_PORT_1		:= $4016
-CONTROLLER_PORT_2		:= $4017
 
 
 
 .code
-; Read four score controller status into buttons_held_new. 
-; Should be called once per graphical frame in a place where it won't conflict with DMC DMA, i.e. during vblank or during DMC IRQ handler
-; Trashes A
-.proc	read_four_score
+; Read state of two standard controllers
+;	Takes: Nothing
+;	Returns: Nothing
+;	Clobbers: A, $00 - $01
+.proc	read_controllers
+	buttons_held_new	= $00	; And $01
 
 strobe_controllers:
 	LDA #$01
 	STA CONTROLLER_PORT_1		; Initiate strobe
-	STA buttons_held_new + 3	; Initialize buttons_held_new + 1 / 3 as a ring counter
+	STA buttons_held_new + 1	; Initialize buttons_held_new + 1 as a ring counter
 	LSR							; A = 0
-	STA buttons_held_new + 1
 	STA CONTROLLER_PORT_1		; Halt strobe
 
 read_loop:
 	LDA CONTROLLER_PORT_1
 	LSR
-	ROL buttons_held_new + 2
 	ROL buttons_held_new + 0
 
 	LDA CONTROLLER_PORT_2
 	LSR
-	ROL buttons_held_new + 3
 	ROL buttons_held_new + 1
 	BCC read_loop
 
-	RTS
-.endproc
-
-; Computes the state of buttons_held, buttons_down, and buttons_up from previous buttons_held state and buttons_held_new.
-; Should be called once per logical frame.
-; Trashes A, X
-.proc	update_controller_state
-	LDX #$03
+update_state:
+	LDX #$01
 :	LDA buttons_held, X			; buttons_down = ~buttons_held & buttons_held_new; i.e. rising edge
 	EOR #$FF
 	AND buttons_held_new, X

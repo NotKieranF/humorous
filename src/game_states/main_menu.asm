@@ -5,7 +5,6 @@
 .include	"controllers.inc"
 .include	"perlin.inc"
 .include	"graphics.inc"
-.export	initial_game_state := main_menu_init
 
 .proc	main_menu_init
 setup_palette:
@@ -276,6 +275,8 @@ no_temp:
 .endproc
 
 .proc	main_menu_loop
+	JSR read_controllers
+
 	LDX #$00
 :	LDA #$FF
 	STA oam + 0, X
@@ -286,8 +287,6 @@ no_temp:
 
 	JSR process_objects
 	JSR render_objects
-	JSR read_four_score
-	JSR update_controller_state
 	JSR wait_for_nmi
 	RTS
 .endproc
