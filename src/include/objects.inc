@@ -13,6 +13,7 @@ MAX_OBJECTS		= 8
 .global		object_x_speed				; Signed 4.4 bit fixed point
 .global		object_y_speed
 
+.globalzp	camera_x, camera_y
 ;
 ;	Takes: object_id in A, object_x_hi in X, object_y_hi in Y
 ;	Returns: Chosen object slot in X, or $FF if no free slots were found

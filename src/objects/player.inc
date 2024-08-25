@@ -50,16 +50,14 @@
 	:	LDA buttons_down
 		AND #CONTROLLERS::BUTTON_A
 		BEQ :+
-			LDA object_flags, X
-			EOR #%01000000
-			STA object_flags, X
+			LDA #$00
+			JSR set_animation
 
 	:	LDA buttons_down
 		AND #CONTROLLERS::BUTTON_B
 		BEQ :+
-			LDA object_flags, X
-			EOR #%10000000
-			STA object_flags, X
+			LDA #$02
+			JSR set_animation
 
 	:	JSR apply_speed
 		RTS
@@ -267,11 +265,12 @@ bokazura_bokazurah_ball_data:
 	.endproc
 
 	.proc	player_test_anim_2
-		.byte	$10
-		.byte	$03
-		.byte	$10
+		.byte	9
 		.byte	$04
-		.byte	$80
+		.byte	8
+		.byte	$03
+		.byte	ANIM_OPCODE::JUMP
+		.byte	$00
 	.endproc
 
 	; Player state pointer table
@@ -296,5 +295,6 @@ bokazura_bokazurah_ball_data:
 	.proc	ANIMATIONS
 		IDLE = (* - ANIMATIONS)
 		.word	player_idle_animation
+		.word	player_test_anim_2
 	.endproc
 .endscope
