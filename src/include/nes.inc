@@ -1,6 +1,7 @@
 .ifndef	NES_INC
 NES_INC = 1
 
+; PPU registers and flags
 .scope	PPU
 	; Registers
 	CTRL		:= $2000

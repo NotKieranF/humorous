@@ -19,11 +19,13 @@ PLAYFIELD_HEIGHT	= 32 ; 20
 camera_x_old:				.res 2	; Previous frame's camera position
 camera_y_old:				.res 2
 camera_x_mod:				.res 1	; Camera tile x position mod PLAYFIELD_WIDTH
+;camera_x_mod_old:			.res 1
 camera_y_mod:				.res 1	; Camera tile y position mod PLAYFIELD_HEIGHT
+;camera_y_mod_old:			.res 1
 screen_x:					.res 1
-screen_x_old:				.res 1
+;screen_x_old:				.res 1
 screen_y:					.res 1
-screen_y_old:				.res 1
+;screen_y_old:				.res 1
 scroll_delta_x:				.res 2
 scroll_delta_y:				.res 2
 playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
@@ -48,39 +50,11 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	BNE :-
 
 	; Load in test tile graphics
-	LDA #$00
-	STA PPU::ADDR
-	STA PPU::ADDR
-
-	LDA #$00
-	LDY #$FF
-	LDX #$10
-:	STA PPU::DATA
-	DEX
-	BNE :-
-
-	LDX #$10
-:	STY PPU::DATA
-	DEX
-	BNE :-
-
-	LDX #$08
-:	STA PPU::DATA
-	DEX
-	BNE :-
-	LDX #$08
-:	STY PPU::DATA
-	DEX
-	BNE :-
-
-	LDX #$08
-:	STY PPU::DATA
-	DEX
-	BNE :-
-	LDX #$08
-:	STA PPU::DATA
-	DEX
-	BNE :-
+	LDA #<test_tiles
+	STA $00
+	LDA #>test_tiles
+	STA $01
+	JSR load_chr_block
 
 	; Load in test sprite graphics
 	LDA #<test_gfx
@@ -152,78 +126,44 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	JSR read_controllers
 	JSR process_objects
 
-	; Backup screen and camera position
-	LDA screen_x
-	STA screen_x_old
-	LDA screen_y
-	STA screen_y_old
+	; TODO: Horizontal scrolling loads the wrong data when vertical scroll is a multiple of 8. Presumably the same for when scrolls are reversed
+
+	; Compute scroll delta based on player's position
+	JSR get_scroll_delta
+
+	; Backup screen and camera x position
 	LDA camera_x + 0
 	STA camera_x_old + 0
 	LDA camera_x + 1
 	STA camera_x_old + 1
-	LDA camera_y + 0
-	STA camera_y_old + 0
-	LDA camera_y + 1
-	STA camera_y_old + 1
 
-	; Center camera on player
-	LDA object_x_lo + 7
-	SEC
-	SBC #<((256 / 2) * 16)
+	; Apply scroll delta to camera_x
+	LDA camera_x + 0
+	CLC
+	ADC scroll_delta_x + 0
 	STA camera_x + 0
-	LDA object_x_hi + 7
-	SBC #>((256 / 2) * 16)
+	LDA camera_x + 1
+	ADC scroll_delta_x + 1
 	STA camera_x + 1
 
-	LDA object_y_lo + 7
-	SEC
-	SBC #<((240 / 2) * 16)
-	STA camera_y + 0
-	LDA object_y_hi + 7
-	SBC #>((240 / 2) * 16)
-	STA camera_y + 1
-
-	LDX #$04
-:	LSR camera_x + 1
-	ROR camera_x + 0
-	LSR camera_y + 1
-	ROR camera_y + 0
-	DEX
-	BNE :-
-	
-	; Compute scroll delta
-	LDA camera_x + 0
-	SEC
-	SBC camera_x_old + 0
-	STA scroll_delta_x + 0
-	LDA camera_x + 1
-	SBC camera_x_old + 1
-	STA scroll_delta_x + 1
-
-	LDA camera_y + 0
-	SEC
-	SBC camera_y_old + 0
-	STA scroll_delta_y + 0
-	LDA camera_y + 1
-	SBC camera_y_old + 1
-	STA scroll_delta_y + 1
-
-	; Queue column and row updates
-	LDA scroll_delta_y
-	BEQ :+
-	LDA screen_y_old
-	AND #%00000111
-	BNE :+
-		JSR queue_row
-:	LDA scroll_delta_x
-	BEQ :+
-	LDA screen_x_old
-	AND #%00000111
-	BNE :+
-		JSR queue_column
+	; Queue column updates
+	BIT scroll_delta_x + 1
+	BPL :+
+		LDA scroll_delta_x
+		BEQ :+
+			LDA camera_x
+			EOR camera_x_old
+			AND #%11111000
+			BEQ :+
+				JSR queue_column
 :
+	; Add scroll delta x to screen position
+	LDA scroll_delta_x + 0
+	CLC
+	ADC screen_x
+	STA screen_x
 
-	;
+	; Change camera x mod
 	LDA camera_x_old + 1
 	STA $00
 	LDA camera_x_old + 0
@@ -254,6 +194,72 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	BCC :+
 		SBC #PLAYFIELD_WIDTH
 :	STA camera_x_mod
+
+	; Queue column updates
+	BIT scroll_delta_x + 1
+	BMI :+
+		LDA scroll_delta_x
+		BEQ :+
+			LDA camera_x
+			EOR camera_x_old
+			AND #%11111000
+			BEQ :+
+				JSR queue_column
+:
+
+
+
+
+	; Backup screen and camera y position
+	LDA camera_y + 0
+	STA camera_y_old + 0
+	LDA camera_y + 1
+	STA camera_y_old + 1
+
+	; Apply scroll delta to camera_y
+	LDA camera_y + 0
+	CLC
+	ADC scroll_delta_y + 0
+	STA camera_y + 0
+	LDA camera_y + 1
+	ADC scroll_delta_y + 1
+	STA camera_y + 1
+
+	; Queue row updates
+	BIT scroll_delta_y + 1
+	BPL :+
+		LDA scroll_delta_y
+		BEQ :+
+			LDA camera_y
+			EOR camera_y_old
+			AND #%11111000
+			BEQ :+
+				JSR queue_row
+:
+	; Add scroll delta y to screen position
+	LDA scroll_delta_y + 0
+	CLC
+	BMI @neg
+	@pos:
+		ADC screen_y
+		BCC :+
+			SBC #256 - 240
+	:	CMP #240
+		BCC :+
+			SBC #240
+	:	STA screen_y
+		JMP @done
+
+	@neg:
+		ADC screen_y
+		BCS :+
+			SBC #(256 - 240) - 1	; Carry is CLEAR
+	:	CMP #240
+		BCC :+
+			SBC #240
+	:	STA screen_y
+
+	@done:
 
 	; Change camera_y_mod
 	LDA camera_y_old + 1
@@ -287,36 +293,17 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 		SBC #PLAYFIELD_HEIGHT
 :	STA camera_y_mod
 
-	; Add scroll delta to screen position
-	LDA scroll_delta_x + 0
-	CLC
-	ADC screen_x
-	STA screen_x
-
-	LDA scroll_delta_y + 0
-	CLC
-	BMI @neg
-	@pos:
-		ADC screen_y
-		BCC :+
-			SBC #256 - 240
-	:	CMP #240
-		BCC :+
-			SBC #240
-	:	STA screen_y
-		JMP @done
-
-	@neg:
-		ADC screen_y
-		BCS :+
-			SBC #(256 - 240) - 1	; Carry is CLEAR
-	:	CMP #240
-		BCC :+
-			SBC #240
-	:	STA screen_y
-
-	@done:
-
+	; Queue row updates
+	BIT scroll_delta_y + 1
+	BMI :+
+		LDA scroll_delta_y
+		BEQ :+
+			LDA camera_y
+			EOR camera_y_old
+			AND #%11111000
+			BEQ :+
+				JSR queue_row
+:
 	; Set scroll
 	LDA screen_x
 	STA soft_scroll_x
@@ -333,9 +320,9 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 
 	JSR clear_oam
 	JSR render_objects
-;	LDA soft_ppumask
-;	ORA #PPU::MASK::GRAYSCALE
-;	STA PPU::MASK
+	LDA soft_ppumask
+	ORA #PPU::MASK::GRAYSCALE
+	STA PPU::MASK
 	JSR wait_for_nmi
 	RTS
 .endproc
@@ -413,6 +400,67 @@ get_x_mod:
 .endproc
 
 ;
+;
+;
+;
+.proc	get_scroll_delta
+	target_x		:= $00	; And $01
+	target_y		:= $02	; And $03
+
+get_target_x:
+	LDA object_x_hi + 7
+	STA target_x + 1
+	LDA object_x_lo + 7
+	LDX #$04
+	:	LSR target_x + 1
+		ROR
+		DEX
+		BNE :-
+	SEC
+	SBC #<(256 / 2)
+	STA target_x + 0
+	LDA target_x + 1
+	SBC #>(256 / 2)
+	STA target_x + 1
+
+get_target_y:
+	LDA object_y_hi + 7
+	STA target_y + 1
+	LDA object_y_lo + 7
+	LDX #$04
+	:	LSR target_y + 1
+		ROR
+		DEX
+		BNE :-
+	SEC
+	SBC #<(240 / 2)
+	STA target_y + 0
+	LDA target_y + 1
+	SBC #>(240 / 2)
+	STA target_y + 1
+
+compute_delta_x:
+	LDA target_x + 0
+	SEC
+	SBC camera_x + 0
+	STA scroll_delta_x + 0
+	LDA target_x + 1
+	SBC camera_x + 1
+	STA scroll_delta_x + 1
+
+compute_delta_y:
+	LDA target_y + 0
+	SEC
+	SBC camera_y + 0
+	STA scroll_delta_y + 0
+	LDA target_y + 1
+	SBC camera_y + 1
+	STA scroll_delta_y + 1
+
+	RTS
+.endproc
+
+;
 ;	Takes: Nothing
 ;	Returns: Nothing
 ;	Clobbers: A, X, Y, $00 - 
@@ -428,15 +476,15 @@ get_x_mod:
 	; Write update packet header
 write_packet_header:
 	LDX gfx_update_buffer_index
-	; Target address = $2000 + screen_x_old >> 3
+	; Target address = $2000 + screen_x >> 3
 	LDA #$20
 	STA gfx_update_buffer + 0, X
-	LDA screen_x_old
+	LDA screen_x
 	LSR
 	LSR
 	LSR
 	STA gfx_update_buffer + 1, X
-	; Bit 3 of screen_x_old determines whether we're updating the left or right half of a column of tiles
+	; Bit 3 of screen_x determines whether we're updating the left or right half of a column of tiles
 	AND #%00000001
 	STA corner_index
 	; Updating a column of 30 tiles, moving down
@@ -479,12 +527,12 @@ construct_column_ptr:
 	STA playfield_ptr + 1
 
 	; Construct initial index into column buffer
-	LDA screen_y_old
+	LDA screen_y
 	LSR
 	LSR
 	LSR
 	STA column_buffer_index
-	; Bit 3 of screen_y_old determines whether we're initially updating the top or bottom half of a tile
+	; Bit 3 of screen_y determines whether we're initially updating the top or bottom half of a tile
 	LSR
 	ROL corner_index
 
@@ -595,11 +643,11 @@ handle_bottom_right:
 	; Write update packet header
 write_packet_header:
 	LDX gfx_update_buffer_index
-	; Target address = $2000 + (screen_y_old & %11111000 << 2)
+	; Target address = $2000 + (screen_y & %11111000 << 2)
 	LDA #$20 >> 2				; Preshift right twice
 	STA gfx_update_buffer + 0, X
-	LDA screen_y_old
-;	AND #%11111000				; Low three bits are already clear
+	LDA screen_y
+	AND #%11111000
 	ASL
 	ROL gfx_update_buffer + 0, X
 	ASL
@@ -650,12 +698,12 @@ construct_column_ptr:
 	STA playfield_ptr + 1
 
 	; Construct initial index into row buffer
-	LDA screen_x_old
+	LDA screen_x
 	LSR
 	LSR
 	LSR
 	STA row_buffer_index
-	; Bit 3 of screen_x_old determines whether we're initially updating the left or right half of a tile
+	; Bit 3 of screen_x determines whether we're initially updating the left or right half of a tile
 	LSR
 	ROL corner_index
 
@@ -745,13 +793,15 @@ handle_bottom_right:
 width_table_lo:
 width_table_hi:
 metatile_top_left:
-.byte	$00, $01, $02, $03
+.byte	$06, $00, $11, $04
 metatile_top_right:
-.byte	$00, $01, $02, $03
+.byte	$06, $03, $12, $05
 metatile_bottom_left:
-.byte	$00, $01, $02, $03
+.byte	$06, $30, $21, $14
 metatile_bottom_right:
-.byte	$00, $01, $02, $03
+.byte	$06, $33, $22, $15
+metatile_attributes:
+.byte	%00 << 6, %01 << 6, %10 << 6, %11 << 6
 
 
 row_to_playfield_ptr_lut_lo:
@@ -764,10 +814,10 @@ row_to_playfield_ptr_lut_hi:
 .endrep
 
 .proc	test_palette
+	.byte	$0F, $04, $14, $24
 	.byte	$0F, $00, $10, $20
-	.byte	$0F, $00, $10, $20
-	.byte	$0F, $00, $10, $20
-	.byte	$0F, $00, $10, $20
+	.byte	$0F, $0A, $1A, $2A
+	.byte	$0F, $0C, $1C, $2C
 
 	.byte	$0F, $03, $13, $23
 	.byte	$0F, $05, $15, $25

@@ -54,3 +54,9 @@ test_gfx:
 .byte	$10, $00
 .incbin		"bokazurah.chr"
 :
+
+test_tiles:
+.word	-(:+ - *) & $FFFF
+.byte	$00, $00
+.incbin		"test_tiles.chr"
+:
