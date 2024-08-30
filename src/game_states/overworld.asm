@@ -14,18 +14,12 @@ PLAYFIELD_HEIGHT	= 32 ; 20
 
 
 .bss
-;camera_x:					.res 2	; Camera position
-;camera_y:					.res 2
 camera_x_old:				.res 2	; Previous frame's camera position
 camera_y_old:				.res 2
 camera_x_mod:				.res 1	; Camera tile x position mod PLAYFIELD_WIDTH
-;camera_x_mod_old:			.res 1
 camera_y_mod:				.res 1	; Camera tile y position mod PLAYFIELD_HEIGHT
-;camera_y_mod_old:			.res 1
 screen_x:					.res 1
-;screen_x_old:				.res 1
 screen_y:					.res 1
-;screen_y_old:				.res 1
 scroll_delta_x:				.res 2
 scroll_delta_y:				.res 2
 playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
@@ -164,36 +158,23 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	STA screen_x
 
 	; Change camera x mod
-	LDA camera_x_old + 1
-	STA $00
 	LDA camera_x_old + 0
-	LDX #$04
-	:	LSR $00
-		ROR
-		DEX
-		BNE :-
-	STA $01
-
-	LDA camera_x + 1
-	STA $00
-	LDA camera_x + 0
-	LDX #$04
-	:	LSR $00
-		ROR
-		DEX
-		BNE :-
-	SEC
-	SBC $01
-
-	CLC
-	ADC camera_x_mod
-	BPL :+
-		CLC
-		ADC #PLAYFIELD_WIDTH
-:	CMP #PLAYFIELD_WIDTH
-	BCC :+
-		SBC #PLAYFIELD_WIDTH
-:	STA camera_x_mod
+	EOR camera_x + 0
+	AND #%11110000
+	BEQ :++
+		BIT scroll_delta_x + 1
+		BMI :+
+			LDA #PLAYFIELD_WIDTH
+			SEC
+			ISC camera_x_mod
+			BNE :++
+				STA camera_x_mod
+				BEQ :++
+	:	DEC camera_x_mod
+		BPL :+
+			LDA #PLAYFIELD_WIDTH - 1
+			STA camera_x_mod
+:
 
 	; Queue column updates
 	BIT scroll_delta_x + 1
@@ -262,36 +243,23 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	@done:
 
 	; Change camera_y_mod
-	LDA camera_y_old + 1
-	STA $00
 	LDA camera_y_old + 0
-	LDX #$04
-	:	LSR $00
-		ROR
-		DEX
-		BNE :-
-	STA $01
-
-	LDA camera_y + 1
-	STA $00
-	LDA camera_y + 0
-	LDX #$04
-	:	LSR $00
-		ROR
-		DEX
-		BNE :-
-	SEC
-	SBC $01
-
-	CLC
-	ADC camera_y_mod
-	BPL :+
-		CLC
-		ADC #PLAYFIELD_HEIGHT
-:	CMP #PLAYFIELD_HEIGHT
-	BCC :+
-		SBC #PLAYFIELD_HEIGHT
-:	STA camera_y_mod
+	EOR camera_y + 0
+	AND #%11110000
+	BEQ :++
+		BIT scroll_delta_y + 1
+		BMI :+
+			LDA #PLAYFIELD_HEIGHT
+			SEC
+			ISC camera_y_mod
+			BNE :++
+				STA camera_y_mod
+				BEQ :++
+	:	DEC camera_y_mod
+		BPL :+
+			LDA #PLAYFIELD_HEIGHT - 1
+			STA camera_y_mod
+:
 
 	; Queue row updates
 	BIT scroll_delta_y + 1
@@ -310,6 +278,25 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	LDA screen_y
 	STA soft_scroll_y
 
+	; Queue attribute updates
+	LDX gfx_update_buffer_index
+	LDA #$23
+	STA gfx_update_buffer + 0, X
+	LDA #$C0
+	STA gfx_update_buffer + 1, X
+	LDA #GFX_PACKET_LENGTH 64, 0
+	STA gfx_update_buffer + 2, X
+	TXA
+	AXS #<-3
+	LDY #$00
+:	LDA attribute_buffer, Y
+	STA gfx_update_buffer, X
+	INX
+	INY
+	CPY #$40
+	BNE :-
+	STX gfx_update_buffer_index
+
 	; camera_x_old = camera_x; camera_y_old = camera_y
 	; Move camera
 	; camera_x_mod += (camera_x_old / 256) - (camera_x /256)
@@ -321,7 +308,6 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	JSR clear_oam
 	JSR render_objects
 	LDA soft_ppumask
-	ORA #PPU::MASK::GRAYSCALE
 	STA PPU::MASK
 	JSR wait_for_nmi
 	RTS
@@ -361,12 +347,9 @@ get_y_mod:
 :	TAY
 
 	; playfild_ptr = &playfield + relative_y_mod * PLAYFIELD_WIDTH
-	LDA width_table_lo, Y
-	CLC
-	ADC #<playfield_buffer
+	LDA row_to_playfield_ptr_lut_lo, Y
 	STA playfield_ptr + 0
-	LDA width_table_hi, Y
-	ADC #>playfield_buffer
+	LDA row_to_playfield_ptr_lut_hi, Y
 	STA playfield_ptr + 1
 
 get_x_mod:
@@ -400,9 +383,9 @@ get_x_mod:
 .endproc
 
 ;
-;
-;
-;
+;	Takes: Nothing
+;	Returns: Nothing
+;	Clobbers: A, X, $00 - $03
 .proc	get_scroll_delta
 	target_x		:= $00	; And $01
 	target_y		:= $02	; And $03
@@ -469,9 +452,11 @@ compute_delta_y:
 	playfield_ptr			:= $02	; And $03
 	current_x_mod			:= $04
 	current_y_mod			:= $05
-	corner_index			:= $06
-	column_buffer_index		:= $07
-	loop_count				:= $08
+	current_x_tile			:= $06
+	current_y_tile			:= $07
+	corner_index			:= $08
+	loop_count				:= $09
+	column_buffer_index		:= $0A
 
 	; Write update packet header
 write_packet_header:
@@ -623,6 +608,45 @@ handle_bottom_right:
 	STA playfield_ptr + 1
 
 	LDA metatile_bottom_right, X
+	PHA
+
+	LDA metatile_attributes, X
+	AND #%00000011
+	TAY
+
+	LDA screen_x
+	LSR
+	LSR
+	LSR
+	LSR
+	AND #%00000001
+	STA $0F
+	LDA column_buffer_index
+	AND #%00000010
+	ORA $0F
+	TAX
+	LDA attribute_identity_table, Y
+	AND attribute_mask_table, X
+	STA $0E
+
+	LDA screen_x
+	LSR
+	LSR
+	LSR
+	LSR
+	LSR
+	STA $0F
+	LDA column_buffer_index
+	ASL
+	AND #%00111000
+	ORA $0F
+	TAY
+	LDA attribute_buffer, Y
+	AND attribute_inverse_mask_table, X
+	ORA $0E
+	STA attribute_buffer, Y
+
+	PLA
 	JMP loop_check
 
 .endproc
@@ -782,6 +806,43 @@ handle_bottom_right:
 		STA current_x_mod
 :
 	LDA metatile_bottom_right, X
+	PHA
+
+	LDA metatile_attributes, X
+	AND #%00000011
+	TAY
+
+	LDA screen_y
+	LSR
+	LSR
+	LSR
+	AND #%00000010
+	STA $0F
+	LDA row_buffer_index
+	LSR
+	AND #%00000001
+	ORA $0F
+	TAX
+	LDA attribute_identity_table, Y
+	AND attribute_mask_table, X
+	STA $0E
+
+	LDA row_buffer_index
+	LSR
+	LSR
+	STA $0F
+	LDA screen_y
+	LSR
+	LSR
+	AND #%00111000
+	ORA $0F
+	TAY
+	LDA attribute_buffer, Y
+	AND attribute_inverse_mask_table, X
+	ORA $0E
+	STA attribute_buffer, Y
+
+	PLA
 	JMP loop_check
 .endproc
 
@@ -790,8 +851,6 @@ handle_bottom_right:
 
 
 .rodata
-width_table_lo:
-width_table_hi:
 metatile_top_left:
 .byte	$06, $00, $11, $04
 metatile_top_right:
@@ -801,7 +860,7 @@ metatile_bottom_left:
 metatile_bottom_right:
 .byte	$06, $33, $22, $15
 metatile_attributes:
-.byte	%00 << 6, %01 << 6, %10 << 6, %11 << 6
+.byte	%00, %01, %10, %11
 
 
 row_to_playfield_ptr_lut_lo:
@@ -812,6 +871,14 @@ row_to_playfield_ptr_lut_hi:
 .repeat	PLAYFIELD_HEIGHT, i
 	.hibytes	playfield_buffer + i * PLAYFIELD_WIDTH
 .endrep
+
+; Helper tables for modifying attribute data
+attribute_identity_table:
+.byte	%00000000, %01010101, %10101010, %11111111
+attribute_mask_table:
+.byte	%00000011, %00001100, %00110000, %11000000
+attribute_inverse_mask_table:
+.byte	%11111100, %11110011, %11001111, %00111111
 
 .proc	test_palette
 	.byte	$0F, $04, $14, $24

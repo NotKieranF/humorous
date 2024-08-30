@@ -10,7 +10,7 @@
 	.endproc
 
 	.proc	player_loop
-		SPEED	= $3C
+		SPEED	= $2C
 
 		LDA #$00
 		STA object_x_speed, X
