@@ -20,8 +20,8 @@ camera_x_mod:				.res 1	; Camera tile x position mod PLAYFIELD_WIDTH
 camera_y_mod:				.res 1	; Camera tile y position mod PLAYFIELD_HEIGHT
 screen_x:					.res 1
 screen_y:					.res 1
-scroll_delta_x:				.res 2
-scroll_delta_y:				.res 2
+scroll_delta_x:				.res 1	; Valid range of -8 to 8
+scroll_delta_y:				.res 1
 playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 
 
@@ -120,8 +120,6 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	JSR read_controllers
 	JSR process_objects
 
-	; TODO: Horizontal scrolling loads the wrong data when vertical scroll is a multiple of 8. Presumably the same for when scrolls are reversed
-
 	; Compute scroll delta based on player's position
 	JSR get_scroll_delta
 
@@ -132,16 +130,18 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	STA camera_x_old + 1
 
 	; Apply scroll delta to camera_x
-	LDA camera_x + 0
-	CLC
-	ADC scroll_delta_x + 0
+	LDA scroll_delta_x
+	BPL :+
+		DEC camera_x + 1		; Compensate when adding negative deltas
+:	CLC
+	ADC camera_x + 0
 	STA camera_x + 0
-	LDA camera_x + 1
-	ADC scroll_delta_x + 1
+	LDA #$00
+	ADC camera_x + 1
 	STA camera_x + 1
 
 	; Queue column updates
-	BIT scroll_delta_x + 1
+	BIT scroll_delta_x
 	BPL :+
 		LDA scroll_delta_x
 		BEQ :+
@@ -152,7 +152,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 				JSR queue_column
 :
 	; Add scroll delta x to screen position
-	LDA scroll_delta_x + 0
+	LDA scroll_delta_x
 	CLC
 	ADC screen_x
 	STA screen_x
@@ -162,7 +162,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	EOR camera_x + 0
 	AND #%11110000
 	BEQ :++
-		BIT scroll_delta_x + 1
+		BIT scroll_delta_x
 		BMI :+
 			LDA #PLAYFIELD_WIDTH
 			SEC
@@ -177,7 +177,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 :
 
 	; Queue column updates
-	BIT scroll_delta_x + 1
+	BIT scroll_delta_x
 	BMI :+
 		LDA scroll_delta_x
 		BEQ :+
@@ -198,16 +198,18 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	STA camera_y_old + 1
 
 	; Apply scroll delta to camera_y
-	LDA camera_y + 0
-	CLC
-	ADC scroll_delta_y + 0
+	LDA scroll_delta_y
+	BPL :+
+		DEC camera_y + 1		; Compensate when adding negative deltas
+:	CLC
+	ADC camera_y + 0
 	STA camera_y + 0
-	LDA camera_y + 1
-	ADC scroll_delta_y + 1
+	LDA #$00
+	ADC camera_y + 1
 	STA camera_y + 1
 
 	; Queue row updates
-	BIT scroll_delta_y + 1
+	BIT scroll_delta_y
 	BPL :+
 		LDA scroll_delta_y
 		BEQ :+
@@ -218,7 +220,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 				JSR queue_row
 :
 	; Add scroll delta y to screen position
-	LDA scroll_delta_y + 0
+	LDA scroll_delta_y
 	CLC
 	BMI @neg
 	@pos:
@@ -247,7 +249,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	EOR camera_y + 0
 	AND #%11110000
 	BEQ :++
-		BIT scroll_delta_y + 1
+		BIT scroll_delta_y
 		BMI :+
 			LDA #PLAYFIELD_HEIGHT
 			SEC
@@ -262,7 +264,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 :
 
 	; Queue row updates
-	BIT scroll_delta_y + 1
+	BIT scroll_delta_y
 	BMI :+
 		LDA scroll_delta_y
 		BEQ :+
@@ -307,8 +309,6 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 
 	JSR clear_oam
 	JSR render_objects
-	LDA soft_ppumask
-	STA PPU::MASK
 	JSR wait_for_nmi
 	RTS
 .endproc
@@ -402,9 +402,6 @@ get_target_x:
 	SEC
 	SBC #<(256 / 2)
 	STA target_x + 0
-	LDA target_x + 1
-	SBC #>(256 / 2)
-	STA target_x + 1
 
 get_target_y:
 	LDA object_y_hi + 7
@@ -418,27 +415,18 @@ get_target_y:
 	SEC
 	SBC #<(240 / 2)
 	STA target_y + 0
-	LDA target_y + 1
-	SBC #>(240 / 2)
-	STA target_y + 1
 
 compute_delta_x:
 	LDA target_x + 0
 	SEC
 	SBC camera_x + 0
-	STA scroll_delta_x + 0
-	LDA target_x + 1
-	SBC camera_x + 1
-	STA scroll_delta_x + 1
+	STA scroll_delta_x
 
 compute_delta_y:
 	LDA target_y + 0
 	SEC
 	SBC camera_y + 0
-	STA scroll_delta_y + 0
-	LDA target_y + 1
-	SBC camera_y + 1
-	STA scroll_delta_y + 1
+	STA scroll_delta_y
 
 	RTS
 .endproc
@@ -493,7 +481,7 @@ construct_column_ptr:
 
 	; Read column of tiles starting from
 	LDA camera_x_mod
-	BIT scroll_delta_x + 1
+	BIT scroll_delta_x
 	BMI :+
 		CLC
 		ADC #16
@@ -703,7 +691,7 @@ construct_column_ptr:
 
 	; Read column of tiles starting from
 	LDA camera_y_mod
-	BIT scroll_delta_y + 1
+	BIT scroll_delta_y
 	BMI :+
 		CLC
 		ADC #15
