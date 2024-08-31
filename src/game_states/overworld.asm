@@ -6,6 +6,10 @@
 .include	"controllers.inc"
 .export	initial_game_state := overworld_init
 ; Playfield buffer dimensions. Outermost ring of tiles <TODO>
+; Maximum speed the camera is able to move in pixels per frame
+CAMERA_MAX_X_SPEED	= 2
+CAMERA_MAX_Y_SPEED	= 2
+; Dimensions of the playfield buffer kept in CPU RAM
 PLAYFIELD_WIDTH		= 32 ; 21
 PLAYFIELD_HEIGHT	= 32 ; 20
 
@@ -14,6 +18,7 @@ PLAYFIELD_HEIGHT	= 32 ; 20
 
 
 .bss
+player_slot:				.res 1	; Player's object slot
 camera_x_old:				.res 2	; Previous frame's camera position
 camera_y_old:				.res 2
 camera_x_mod:				.res 1	; Camera tile x position mod PLAYFIELD_WIDTH
@@ -66,6 +71,7 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	LDX #$08
 	LDY #$08
 	JSR load_object
+	STX player_slot
 
 	; Load test level into playfield
 	LDA #<playfield_buffer
@@ -121,7 +127,8 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 	JSR process_objects
 
 	; Compute scroll delta based on player's position
-	JSR get_scroll_delta
+	LDX player_slot
+	JSR camera_follow_object
 
 	; Backup screen and camera x position
 	LDA camera_x + 0
@@ -382,51 +389,111 @@ get_x_mod:
 	RTS
 .endproc
 
-;
-;	Takes: Nothing
+; Sets scroll_delta_x and scroll_delta_y to center the camera on a particular object
+;	Takes: Object slot to follow in X
 ;	Returns: Nothing
-;	Clobbers: A, X, $00 - $03
-.proc	get_scroll_delta
+;	Clobbers: A, Y, $00 - $01
+.proc	camera_follow_object
 	target_x		:= $00	; And $01
-	target_y		:= $02	; And $03
+	target_y		:= $00	; And $01
 
+	; target_x = object_x[X] >> 4 - 256 / 2
 get_target_x:
-	LDA object_x_hi + 7
+	LDA object_x_hi, X
 	STA target_x + 1
-	LDA object_x_lo + 7
-	LDX #$04
+	LDA object_x_lo, X
+	LDY #$04
 	:	LSR target_x + 1
 		ROR
-		DEX
+		DEY
 		BNE :-
 	SEC
 	SBC #<(256 / 2)
 	STA target_x + 0
+	LDA target_x + 1
+	SBC #>(256 / 2)
+	STA target_x + 1
 
-get_target_y:
-	LDA object_y_hi + 7
-	STA target_y + 1
-	LDA object_y_lo + 7
-	LDX #$04
-	:	LSR target_y + 1
-		ROR
-		DEX
-		BNE :-
-	SEC
-	SBC #<(240 / 2)
-	STA target_y + 0
-
+	; delta_x = target_x - camera_x
 compute_delta_x:
 	LDA target_x + 0
 	SEC
 	SBC camera_x + 0
 	STA scroll_delta_x
+	LDA target_x + 1
+	SBC camera_x + 1
 
+	; delta_x = min(delta_x, CAMERA_MAX_X_SPEED)
+	; delta_x = max(delta_x, -CAMERA_MAX_X_SPEED)
+clamp_delta_x:
+	BMI @neg
+@pos:
+;	CMP #>CAMERA_MAX_X_SPEED
+	BNE :+
+	LDA scroll_delta_x
+	CMP #<CAMERA_MAX_X_SPEED
+	BCC @done
+:	LDA #<CAMERA_MAX_X_SPEED
+	STA scroll_delta_x
+	BNE @done
+@neg:
+	CMP #>-CAMERA_MAX_X_SPEED
+	BNE :+
+	LDA scroll_delta_x
+	CMP #<-CAMERA_MAX_X_SPEED
+	BCS @done
+:	LDA #<-CAMERA_MAX_X_SPEED
+	STA scroll_delta_x
+@done:
+
+	; target_y = object_y[X] >> 4 - 240 / 2
+get_target_y:
+	LDA object_y_hi, X
+	STA target_y + 1
+	LDA object_y_lo, X
+	LDY #$04
+	:	LSR target_y + 1
+		ROR
+		DEY
+		BNE :-
+	SEC
+	SBC #<(240 / 2)
+	STA target_y + 0
+	LDA target_y + 1
+	SBC #>(240 / 2)
+	STA target_y + 1
+
+	; delta_y = target_y - camera_y
 compute_delta_y:
 	LDA target_y + 0
 	SEC
 	SBC camera_y + 0
 	STA scroll_delta_y
+	LDA target_y + 1
+	SBC camera_y + 1
+
+	; delta_y = min(delta_y, CAMERA_Y_MAX_SPEED)
+	; delta_y = max(delta_y, -CAMERA_Y_MAX_SPEED)
+clamp_delta_y:
+	BMI @neg
+@pos:
+;	CMP #>CAMERA_MAX_Y_SPEED
+	BNE :+
+	LDA scroll_delta_y
+	CMP #<CAMERA_MAX_Y_SPEED
+	BCC @done
+:	LDA #<CAMERA_MAX_Y_SPEED
+	STA scroll_delta_y
+	BNE @done
+@neg:
+	CMP #>-CAMERA_MAX_Y_SPEED
+	BNE :+
+	LDA scroll_delta_y
+	CMP #<-CAMERA_MAX_Y_SPEED
+	BCS @done
+:	LDA #<-CAMERA_MAX_Y_SPEED
+	STA scroll_delta_y
+@done:
 
 	RTS
 .endproc
@@ -839,18 +906,7 @@ handle_bottom_right:
 
 
 .rodata
-metatile_top_left:
-.byte	$06, $00, $11, $04
-metatile_top_right:
-.byte	$06, $03, $12, $05
-metatile_bottom_left:
-.byte	$06, $30, $21, $14
-metatile_bottom_right:
-.byte	$06, $33, $22, $15
-metatile_attributes:
-.byte	%00, %01, %10, %11
-
-
+; Table to convert a row position to a pointer into playfield_buffer for use with (zp), Y addressing
 row_to_playfield_ptr_lut_lo:
 .repeat	PLAYFIELD_HEIGHT, i
 	.lobytes	playfield_buffer + i * PLAYFIELD_WIDTH
@@ -867,6 +923,20 @@ attribute_mask_table:
 .byte	%00000011, %00001100, %00110000, %11000000
 attribute_inverse_mask_table:
 .byte	%11111100, %11110011, %11001111, %00111111
+
+
+metatile_top_left:
+.byte	$06, $00, $11, $04
+metatile_top_right:
+.byte	$06, $03, $12, $05
+metatile_bottom_left:
+.byte	$06, $30, $21, $14
+metatile_bottom_right:
+.byte	$06, $33, $22, $15
+metatile_attributes:
+.byte	%00, %01, %10, %11
+
+
 
 .proc	test_palette
 	.byte	$0F, $04, $14, $24
