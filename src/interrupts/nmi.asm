@@ -150,8 +150,7 @@ popslide_loop:
 @read_length:
 	PLA								; Read packet length byte
 	ASL								; Shift direction bit into carry
-	EOR #%11111100					; Invert length value for lo byte of Duff's device address, with a minimum of 1 iteration
-	STA popslide_addr + 0
+	STA popslide_addr + 0			; The rest of the length byte can be directly used as the lo byte for our Duff's device pointer
 
 @check_direction:
 	LDA #PPU::CTRL::INC_1
