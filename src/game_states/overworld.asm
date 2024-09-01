@@ -6,9 +6,12 @@
 .include	"controllers.inc"
 .export	initial_game_state := overworld_init
 ; Playfield buffer dimensions. Outermost ring of tiles <TODO>
+; Screen dimensions
+SCREEN_WIDTH		= 256
+SCREEN_HEIGHT		= 240
 ; Maximum speed the camera is able to move in pixels per frame
-CAMERA_MAX_X_SPEED	= 2
-CAMERA_MAX_Y_SPEED	= 2
+CAMERA_MAX_X_SPEED	= 8
+CAMERA_MAX_Y_SPEED	= 8
 ; Dimensions of the playfield buffer kept in CPU RAM
 PLAYFIELD_WIDTH		= 32 ; 21
 PLAYFIELD_HEIGHT	= 32 ; 20
@@ -27,6 +30,10 @@ screen_x:					.res 1
 screen_y:					.res 1
 scroll_delta_x:				.res 1	; Valid range of -8 to 8
 scroll_delta_y:				.res 1
+scroll_accumulator_left:	.res 2
+scroll_accumulator_right:	.res 2
+scroll_accumulator_up:		.res 2
+scroll_accumulator_down:	.res 2
 playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 
 
@@ -226,27 +233,27 @@ playfield_buffer:			.res PLAYFIELD_WIDTH * PLAYFIELD_HEIGHT
 			BEQ :+
 				JSR queue_row
 :
-	; Add scroll delta y to screen position
+	; Add scroll delta y to screen position mod SCREEN_HEIGHT
 	LDA scroll_delta_y
 	CLC
 	BMI @neg
 	@pos:
 		ADC screen_y
 		BCC :+
-			SBC #256 - 240
-	:	CMP #240
+			SBC #256 - SCREEN_HEIGHT
+	:	CMP #SCREEN_HEIGHT
 		BCC :+
-			SBC #240
+			SBC #SCREEN_HEIGHT
 	:	STA screen_y
 		JMP @done
 
 	@neg:
 		ADC screen_y
 		BCS :+
-			SBC #(256 - 240) - 1	; Carry is CLEAR
-	:	CMP #240
+			SBC #(256 - SCREEN_HEIGHT) - 1	; Carry is CLEAR
+	:	CMP #SCREEN_HEIGHT
 		BCC :+
-			SBC #240
+			SBC #SCREEN_HEIGHT
 	:	STA screen_y
 
 	@done:
@@ -397,7 +404,7 @@ get_x_mod:
 	target_x		:= $00	; And $01
 	target_y		:= $00	; And $01
 
-	; target_x = object_x[X] >> 4 - 256 / 2
+	; target_x = object_x[X] >> 4 - SCREEN_WIDTH / 2
 get_target_x:
 	LDA object_x_hi, X
 	STA target_x + 1
@@ -408,10 +415,10 @@ get_target_x:
 		DEY
 		BNE :-
 	SEC
-	SBC #<(256 / 2)
+	SBC #<(SCREEN_WIDTH / 2)
 	STA target_x + 0
 	LDA target_x + 1
-	SBC #>(256 / 2)
+	SBC #>(SCREEN_WIDTH / 2)
 	STA target_x + 1
 
 	; delta_x = target_x - camera_x
@@ -446,7 +453,7 @@ clamp_delta_x:
 	STA scroll_delta_x
 @done:
 
-	; target_y = object_y[X] >> 4 - 240 / 2
+	; target_y = object_y[X] >> 4 - SCREEN_HEIGHT / 2
 get_target_y:
 	LDA object_y_hi, X
 	STA target_y + 1
@@ -457,10 +464,10 @@ get_target_y:
 		DEY
 		BNE :-
 	SEC
-	SBC #<(240 / 2)
+	SBC #<(SCREEN_HEIGHT / 2)
 	STA target_y + 0
 	LDA target_y + 1
-	SBC #>(240 / 2)
+	SBC #>(SCREEN_HEIGHT / 2)
 	STA target_y + 1
 
 	; delta_y = target_y - camera_y
@@ -511,7 +518,8 @@ clamp_delta_y:
 	current_y_tile			:= $07
 	corner_index			:= $08
 	loop_count				:= $09
-	column_buffer_index		:= $0A
+	attribute_index			:= $0A
+	attribute_temp			:= $0B
 
 	; Write update packet header
 write_packet_header:
@@ -523,6 +531,7 @@ write_packet_header:
 	LSR
 	LSR
 	LSR
+	STA current_x_tile
 	STA gfx_update_buffer + 1, X
 	; Bit 3 of screen_x determines whether we're updating the left or right half of a column of tiles
 	AND #%00000001
@@ -551,7 +560,7 @@ construct_column_ptr:
 	BIT scroll_delta_x
 	BMI :+
 		CLC
-		ADC #16
+		ADC #SCREEN_WIDTH / 16
 		CMP #PLAYFIELD_WIDTH
 		BCC :+
 			SBC #PLAYFIELD_WIDTH
@@ -571,7 +580,7 @@ construct_column_ptr:
 	LSR
 	LSR
 	LSR
-	STA column_buffer_index
+	STA current_y_tile
 	; Bit 3 of screen_y determines whether we're initially updating the top or bottom half of a tile
 	LSR
 	ROL corner_index
@@ -595,15 +604,15 @@ loop:
 	RTS
 
 loop_check:
-	LDY column_buffer_index
+	LDY current_y_tile			; Current tile is our index into the column buffer
 	STA (column_buffer_ptr), Y
 
-	; Increment column buffer index, wrapping around at 30
+	; Increment current y tile, wrapping around at 30
 	LDA #30
 	SEC
-	ISC column_buffer_index
+	ISC current_y_tile
 	BNE :+
-		STA column_buffer_index
+		STA current_y_tile
 :
 	; Check loop condition
 	DEC loop_count
@@ -665,40 +674,41 @@ handle_bottom_right:
 	LDA metatile_bottom_right, X
 	PHA
 
+	; Extract palette data from attributes
 	LDA metatile_attributes, X
 	AND #%00000011
 	TAY
 
-	LDA screen_x
+	; attribute_index = {current_x_tile >> 2} | (current_y_tile << 1 & 0b00111000)
+	LDA current_x_tile
 	LSR
 	LSR
-	LSR
-	LSR
-	AND #%00000001
-	STA $0F
-	LDA column_buffer_index
-	AND #%00000010
-	ORA $0F
+	STA attribute_index
+	
+	; Compute position within attribute area: (current_x_tile >> 1 & 0b01) | (current_y_tile & 0b10)
+	PHP					; Save C, which holds bit 1 of current_x_tile
+	LDA current_y_tile
+	AND #%00000010		; Mask off everything but bit 1 of current_y_tile
+	PLP
+	ADC #$00			; Bit 0 now holds C, i.e. bit 1 of current_x_tile
 	TAX
+
+	; Mask off everything but corresponding attribute area
 	LDA attribute_identity_table, Y
 	AND attribute_mask_table, X
-	STA $0E
+	STA attribute_temp
 
-	LDA screen_x
-	LSR
-	LSR
-	LSR
-	LSR
-	LSR
-	STA $0F
-	LDA column_buffer_index
+	; attribute_index = current_x_tile >> 2 {| (current_y_tile << 1 & 0b00111000)}
+	LDA current_y_tile
 	ASL
 	AND #%00111000
-	ORA $0F
+	ORA attribute_index
 	TAY
+
+	; Combine new attribute data with old
 	LDA attribute_buffer, Y
 	AND attribute_inverse_mask_table, X
-	ORA $0E
+	ORA attribute_temp
 	STA attribute_buffer, Y
 
 	PLA
@@ -715,9 +725,12 @@ handle_bottom_right:
 	playfield_ptr			:= $02	; And $03
 	current_x_mod			:= $04
 	current_y_mod			:= $05
-	corner_index			:= $06
-	row_buffer_index		:= $07
-	loop_count				:= $08	
+	current_x_tile			:= $06
+	current_y_tile			:= $07
+	corner_index			:= $08
+	loop_count				:= $09
+	attribute_index			:= $0A
+	attribute_temp			:= $0B
 
 	; Write update packet header
 write_packet_header:
@@ -732,11 +745,6 @@ write_packet_header:
 	ASL
 	ROL gfx_update_buffer + 0, X
 	STA gfx_update_buffer + 1, X
-	; Bit 3 of screen__old determines whether we're updating the top or bottom half of a row of tiles
-	AND #%00001000 << 2
-	BEQ :+
-		LDA #%00000001
-:	STA corner_index
 	; Updating a row of 32 tiles, moving right
 	LDA #GFX_PACKET_LENGTH 32, 0
 	STA gfx_update_buffer + 2, X
@@ -761,7 +769,7 @@ construct_column_ptr:
 	BIT scroll_delta_y
 	BMI :+
 		CLC
-		ADC #15
+		ADC #SCREEN_HEIGHT / 16
 		CMP #PLAYFIELD_HEIGHT
 		BCC :+
 			SBC #PLAYFIELD_HEIGHT
@@ -781,8 +789,18 @@ construct_column_ptr:
 	LSR
 	LSR
 	LSR
-	STA row_buffer_index
+	STA current_x_tile
 	; Bit 3 of screen_x determines whether we're initially updating the left or right half of a tile
+	AND #%00000001
+	STA corner_index
+
+	; Get current y tile
+	LDA screen_y
+	LSR
+	LSR
+	LSR
+	STA current_y_tile
+	; Bit 3 of screen_y determines whether we're updating the tops or bottoms of a tile
 	LSR
 	ROL corner_index
 
@@ -792,7 +810,7 @@ construct_column_ptr:
 loop:
 	; Alternate writing the left/right halves of tiles
 	LAX corner_index
-	EOR #%00000001
+	EOR #%00000010
 	STA corner_index
 
 	;
@@ -805,15 +823,15 @@ loop:
 	RTS
 
 loop_check:
-	LDY row_buffer_index
+	LDY current_x_tile
 	STA (row_buffer_ptr), Y
 
 	; Increment row buffer index, wrapping around at 32
 	LDA #32
 	SEC
-	ISC row_buffer_index
+	ISC current_x_tile
 	BNE :+
-		STA row_buffer_index
+		STA current_x_tile
 :
 	; Check loop condition
 	DEC loop_count
@@ -823,14 +841,14 @@ loop_check:
 
 corner_routines_lo:
 .lobytes	handle_top_left - 1
-.lobytes	handle_top_right - 1
 .lobytes	handle_bottom_left - 1
+.lobytes	handle_top_right - 1
 .lobytes	handle_bottom_right - 1
 
 corner_routines_hi:
 .hibytes	handle_top_left - 1
-.hibytes	handle_top_right - 1
 .hibytes	handle_bottom_left - 1
+.hibytes	handle_top_right - 1
 .hibytes	handle_bottom_right - 1
 
 handle_top_left:
@@ -863,38 +881,41 @@ handle_bottom_right:
 	LDA metatile_bottom_right, X
 	PHA
 
+	; Extract palette data from attributes
 	LDA metatile_attributes, X
 	AND #%00000011
 	TAY
 
-	LDA screen_y
+	; attribute_index = {current_x_tile >> 2} | (current_y_tile << 1 & 0b00111000)
+	LDA current_x_tile
 	LSR
 	LSR
-	LSR
-	AND #%00000010
-	STA $0F
-	LDA row_buffer_index
-	LSR
-	AND #%00000001
-	ORA $0F
+	STA attribute_index
+	
+	; Compute position within attribute area: (current_x_tile >> 1 & 0b01) | (current_y_tile & 0b10)
+	PHP					; Save C, which holds bit 1 of current_x_tile
+	LDA current_y_tile
+	AND #%00000010		; Mask off everything but bit 1 of current_y_tile
+	PLP
+	ADC #$00			; Bit 0 now holds C, i.e. bit 1 of current_x_tile
 	TAX
+
+	; Mask off everything but corresponding attribute area
 	LDA attribute_identity_table, Y
 	AND attribute_mask_table, X
-	STA $0E
+	STA attribute_temp
 
-	LDA row_buffer_index
-	LSR
-	LSR
-	STA $0F
-	LDA screen_y
-	LSR
-	LSR
+	; attribute_index = current_x_tile >> 2 {| (current_y_tile << 1 & 0b00111000)}
+	LDA current_y_tile
+	ASL
 	AND #%00111000
-	ORA $0F
+	ORA attribute_index
 	TAY
+
+	; Combine new attribute data with old
 	LDA attribute_buffer, Y
 	AND attribute_inverse_mask_table, X
-	ORA $0E
+	ORA attribute_temp
 	STA attribute_buffer, Y
 
 	PLA
